@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Трекер">
+    <title>Мой учебный план - 12 недель</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        body {
+            background-color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            padding-top: env(safe-area-inset-top);
+        }
+        .progress-bar {
+            transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .debt-critical {
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        /* Скрытие скроллбара для чистоты интерфейса */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 pb-10">
+    <div id="app" class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <header class="bg-white rounded-3xl p-6 shadow-sm mb-6 border border-gray-100">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 class="text-3xl font-black text-gray-900 tracking-tight">Учебный Трекер</h1>
+                    <p id="motivation-quote" class="text-blue-600 font-medium mt-1 italic">Загрузка мотивации...</p>
+                </div>
+                <div class="flex items-center bg-gray-50 p-2 rounded-2xl border border-gray-200">
+                    <label for="weekSelect" class="px-3 font-bold text-gray-600 text-sm tracking-tighter">НЕДЕЛЯ:</label>
+                    <select id="weekSelect" onchange="changeWeek()" class="bg-white border-none text-blue-700 font-black rounded-xl focus:ring-2 focus:ring-blue-500 block p-2 outline-none cursor-pointer">
+                        <!-- Weeks populated by JS -->
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <!-- Global Stats Board -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center">
+                <p class="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Долги недели</p>
+                <p id="week-debt" class="text-2xl font-black text-gray-800">0</p>
+            </div>
+            <div id="total-debt-card" class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center transition-all">
+                <p class="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Всего пропущено</p>
+                <p id="total-debt" class="text-2xl font-black text-gray-800">0</p>
+            </div>
+            <div class="bg-blue-600 p-4 rounded-2xl shadow-lg text-center text-white col-span-2">
+                <p class="text-[10px] opacity-80 uppercase font-black tracking-widest mb-1">Прогресс за 12 недель</p>
+                <div class="flex items-center justify-center gap-2">
+                    <p id="total-progress-percent" class="text-2xl font-black">0%</p>
+                    <span class="text-xs opacity-60">выполнено</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Subject Progress -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white p-5 rounded-2xl shadow-sm border-b-4 border-blue-500">
+                <div class="flex justify-between items-end mb-2">
+                    <p class="text-xs text-gray-500 font-bold uppercase">Русский</p>
+                    <p class="text-sm font-black text-gray-800" id="stats-russian">0 / 8.5ч</p>
+                </div>
+                <div class="w-full bg-gray-100 rounded-full h-2">
+                    <div id="bar-russian" class="bg-blue-500 h-2 rounded-full progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+            <div class="bg-white p-5 rounded-2xl shadow-sm border-b-4 border-purple-500">
+                <div class="flex justify-between items-end mb-2">
+                    <p class="text-xs text-gray-500 font-bold uppercase">Информатика</p>
+                    <p class="text-sm font-black text-gray-800" id="stats-it">0 / 10.5ч</p>
+                </div>
+                <div class="w-full bg-gray-100 rounded-full h-2">
+                    <div id="bar-it" class="bg-purple-500 h-2 rounded-full progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+            <div class="bg-white p-5 rounded-2xl shadow-sm border-b-4 border-orange-500">
+                <div class="flex justify-between items-end mb-2">
+                    <p class="text-xs text-gray-500 font-bold uppercase">Математика</p>
+                    <p class="text-sm font-black text-gray-800" id="stats-math">0 / 12ч</p>
+                </div>
+                <div class="w-full bg-gray-100 rounded-full h-2">
+                    <div id="bar-math" class="bg-orange-500 h-2 rounded-full progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schedule Container -->
+        <div id="schedule" class="space-y-6 pb-10">
+            <!-- Days injected here -->
+        </div>
+
+        <!-- Help Info -->
+        <div class="bg-gray-100 rounded-2xl p-4 text-center">
+            <p class="text-xs text-gray-500 leading-relaxed">
+                Чтобы сохранить на iPhone: Открой ссылку в Safari → Поделиться → На экран «Домой»
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const scheduleData = [
+            { day: "Понедельник", tasks: [{ id: "mon_1", time: "07:00 – 09:30", subject: "Русский язык", duration: 2.5 }] },
+            { day: "Вторник", tasks: [
+                { id: "tue_1", time: "04:00 – 05:00", subject: "Математика", duration: 1 },
+                { id: "tue_2", time: "18:30 – 21:30", subject: "Информатика", duration: 3 }
+            ]},
+            { day: "Среда", tasks: [
+                { id: "wed_1", time: "16:00 – 18:00", subject: "Русский язык", duration: 2 },
+                { id: "wed_2", time: "18:30 – 21:30", subject: "Математика", duration: 3 }
+            ]},
+            { day: "Четверг", tasks: [{ id: "thu_1", time: "07:00 – 09:30", subject: "Информатика", duration: 2.5 }] },
+            { day: "Пятница", tasks: [
+                { id: "fri_1", time: "15:00 – 17:00", subject: "Русский язык", duration: 2 },
+                { id: "fri_2", time: "18:30 – 21:30", subject: "Математика", duration: 3 }
+            ]},
+            { day: "Суббота", tasks: [{ id: "sat_1", time: "18:00 – 20:00", subject: "Информатика", duration: 2 }] },
+            { day: "Воскресенье", tasks: [{ id: "sun_1", time: "18:00 – 20:00", subject: "Математика", duration: 2 }] }
+        ];
+
+        const quotes = {
+            none: "Сегодня еще ничего не сделано. Пора начинать! 🚀",
+            start: "Хороший старт! Продолжай в том же духе. 🔥",
+            half: "Половина пути пройдена. Ты машина! 💪",
+            almost: "Осталось совсем чуть-чуть до идеального дня! ✨",
+            done: "День закрыт на 100%! Ты лучший, отдыхай! 🏆"
+        };
+
+        let currentWeek = 1;
+        let userData = JSON.parse(localStorage.getItem('study_tracker_v2_data')) || {};
+
+        function init() {
+            const weekSelect = document.getElementById('weekSelect');
+            for (let i = 1; i <= 12; i++) {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = i;
+                weekSelect.appendChild(opt);
+            }
+            renderSchedule();
+        }
+
+        function changeWeek() {
+            currentWeek = parseInt(document.getElementById('weekSelect').value);
+            renderSchedule();
+        }
+
+        function toggleTask(taskId) {
+            const key = `week_${currentWeek}_${taskId}`;
+            userData[key] = !userData[key];
+            localStorage.setItem('study_tracker_v2_data', JSON.stringify(userData));
+            renderSchedule();
+            
+            // Легкая вибрация при клике (если поддерживается)
+            if (window.navigator.vibrate) {
+                window.navigator.vibrate(50);
+            }
+        }
+
+        function updateGlobalStats() {
+            let totalTasks = 0;
+            let completedTasksAllTime = 0;
+            let weekTasks = 0;
+            let weekCompleted = 0;
+            let totalDebts = 0;
+
+            for (let w = 1; w <= 12; w++) {
+                scheduleData.forEach(day => {
+                    day.tasks.forEach(task => {
+                        totalTasks++;
+                        const isDone = userData[`week_${w}_${task.id}`];
+                        if (isDone) {
+                            completedTasksAllTime++;
+                            if (w === currentWeek) weekCompleted++;
+                        } else {
+                            totalDebts++;
+                        }
+                        if (w === currentWeek) weekTasks++;
+                    });
+                });
+            }
+
+            const weekDebts = weekTasks - weekCompleted;
+            
+            document.getElementById('week-debt').textContent = weekDebts;
+            document.getElementById('total-debt').textContent = totalDebts;
+            
+            const totalProgress = Math.round((completedTasksAllTime / totalTasks) * 100);
+            document.getElementById('total-progress-percent').textContent = `${totalProgress}%`;
+
+            const debtCard = document.getElementById('total-debt-card');
+            if (totalDebts > 0) {
+                debtCard.classList.add('debt-critical', 'bg-red-50', 'border-red-200');
+                document.getElementById('total-debt').classList.add('text-red-600');
+            } else {
+                debtCard.classList.remove('debt-critical', 'bg-red-50', 'border-red-200');
+                document.getElementById('total-debt').classList.remove('text-red-600');
+            }
+
+            const quoteEl = document.getElementById('motivation-quote');
+            const weekRatio = weekCompleted / weekTasks;
+            if (weekRatio === 0) quoteEl.textContent = quotes.none;
+            else if (weekRatio === 1) quoteEl.textContent = quotes.done;
+            else if (weekRatio > 0.8) quoteEl.textContent = quotes.almost;
+            else if (weekRatio > 0.4) quoteEl.textContent = quotes.half;
+            else quoteEl.textContent = quotes.start;
+        }
+
+        function calculateSubjectStats() {
+            const totals = { "Русский язык": 8.5, "Информатика": 10.5, "Математика": 12 };
+            const completed = { "Русский язык": 0, "Информатика": 0, "Математика": 0 };
+
+            scheduleData.forEach(day => {
+                day.tasks.forEach(task => {
+                    if (userData[`week_${currentWeek}_${task.id}`]) {
+                        completed[task.subject] += task.duration;
+                    }
+                });
+            });
+
+            updateStatDisplay('russian', completed['Русский язык'], totals['Русский язык']);
+            updateStatDisplay('it', completed['Информатика'], totals['Информатика']);
+            updateStatDisplay('math', completed['Математика'], totals['Математика']);
+        }
+
+        function updateStatDisplay(id, current, total) {
+            document.getElementById(`stats-${id}`).textContent = `${current} / ${total}ч`;
+            const percent = (current / total) * 100;
+            document.getElementById(`bar-${id}`).style.width = `${percent}%`;
+        }
+
+        function renderSchedule() {
+            const container = document.getElementById('schedule');
+            container.innerHTML = '';
+
+            scheduleData.forEach(dayInfo => {
+                const daySection = document.createElement('div');
+                daySection.className = 'bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden mb-6';
+                
+                let tasksHtml = '';
+                dayInfo.tasks.forEach(task => {
+                    const isDone = userData[`week_${currentWeek}_${task.id}`] || false;
+                    const color = task.subject === "Русский язык" ? "blue" : (task.subject === "Математика" ? "orange" : "purple");
+
+                    tasksHtml += `
+                        <div class="flex items-center p-5 border-t border-gray-50 active:bg-slate-100 transition-all cursor-pointer group" onclick="toggleTask('${task.id}')">
+                            <div class="flex-shrink-0 mr-5">
+                                <div class="w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-all ${isDone ? `bg-${color}-500 border-${color}-500 shadow-lg shadow-${color}-200` : 'border-gray-200'}">
+                                    ${isDone ? '<svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>' : ''}
+                                </div>
+                            </div>
+                            <div class="flex-grow">
+                                <h4 class="font-bold text-lg leading-tight ${isDone ? 'text-gray-300 line-through' : 'text-gray-800'}">${task.subject}</h4>
+                                <div class="flex items-center text-sm font-medium ${isDone ? 'text-gray-200' : 'text-gray-400'}">
+                                    <svg class="w-4 h-4 mr-1.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2"></path></svg>
+                                    ${task.time}
+                                </div>
+                            </div>
+                            <div class="flex-shrink-0 ml-2">
+                                <span class="px-2 py-1 text-[10px] font-black uppercase rounded-md tracking-wider ${isDone ? 'bg-gray-50 text-gray-300' : `bg-${color}-50 text-${color}-600`}">
+                                    ${task.duration}ч
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                daySection.innerHTML = `
+                    <div class="bg-gray-50/50 px-6 py-3 border-b border-gray-100 flex justify-between items-center">
+                        <h3 class="font-black text-gray-500 text-xs uppercase tracking-[0.2em]">${dayInfo.day}</h3>
+                    </div>
+                    <div class="divide-y divide-gray-50">
+                        ${tasksHtml}
+                    </div>
+                `;
+                container.appendChild(daySection);
+            });
+
+            calculateSubjectStats();
+            updateGlobalStats();
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
