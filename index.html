@@ -28,9 +28,7 @@
         .safe-area-top { padding-top: env(safe-area-inset-top); }
         .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
         .card { background-color: var(--ios-card); border-radius: 12px; }
-        .tab-active { color: var(--ios-accent); border-bottom: 2px solid var(--ios-accent); }
         
-        /* Стили для скролла недель */
         .week-nav {
             display: flex;
             overflow-x: auto;
@@ -38,17 +36,38 @@
             -webkit-overflow-scrolling: touch;
         }
         .week-nav::-webkit-scrollbar { display: none; }
-        .week-item { scroll-snap-align: center; flex: 0 0 100px; }
+        .week-item { scroll-snap-align: start; flex: 0 0 auto; }
+
+        /* Анимация пульсации для активного занятия */
+        @keyframes pulse-blue {
+            0% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(10, 132, 255, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0); }
+        }
+        .active-session-card {
+            animation: pulse-blue 2s infinite;
+            border: 1px solid var(--ios-accent);
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .dot-blink { animation: blink 1.5s infinite; }
     </style>
 </head>
 <body class="safe-area-top safe-area-bottom min-h-screen flex flex-col">
 
     <!-- Header -->
-    <header class="p-4 sticky top-0 bg-black/80 backdrop-blur-md z-10 border-b border-white/10">
-        <div class="flex justify-between items-end">
+    <header class="p-4 sticky top-0 bg-black/80 backdrop-blur-md z-20 border-b border-white/10">
+        <div class="flex justify-between items-start">
             <div>
                 <h1 class="text-2xl font-bold">Весна 2026</h1>
-                <p id="current-date-display" class="text-gray-400 text-sm">Март - Апрель</p>
+                <div id="active-status-header" class="hidden items-center text-blue-400 text-xs font-bold mt-1">
+                    <span class="w-2 h-2 bg-blue-500 rounded-full mr-2 dot-blink"></span>
+                    СЕЙЧАС ИДЕТ ЗАНЯТИЕ
+                </div>
+                <p id="current-date-display" class="text-gray-400 text-sm mt-1">Загрузка...</p>
             </div>
             <div class="text-right">
                 <span class="text-xs uppercase text-gray-500 font-semibold">Долг (часы)</span>
@@ -59,81 +78,91 @@
 
     <!-- Progress Bars -->
     <section class="p-4 space-y-3">
-        <div id="stats-container" class="space-y-4">
-            <!-- Stats JS injected here -->
-        </div>
+        <div id="stats-container" class="space-y-4"></div>
     </section>
 
     <!-- Week Navigation -->
-    <nav class="week-nav px-4 py-2 border-b border-white/5 space-x-2" id="week-selector">
-        <!-- Weeks JS injected here -->
-    </nav>
+    <nav class="week-nav px-4 py-2 border-b border-white/5 space-x-2" id="week-selector"></nav>
 
     <!-- Main Content -->
-    <main class="flex-1 p-4 overflow-y-auto" id="days-container">
-        <!-- Cards JS injected here -->
-    </main>
+    <main class="flex-1 p-4 overflow-y-auto" id="days-container"></main>
+
+    <!-- Footer with SOS -->
+    <footer class="p-6 border-t border-white/10 bg-black/50">
+        <button id="sos-btn" class="w-full bg-red-600/20 text-red-500 border border-red-600/30 py-4 rounded-2xl font-black text-sm active:scale-95 transition-all">
+            🚨 SOS: ПЕРЕСЧИТАТЬ ГРАФИК
+        </button>
+        <p class="text-[10px] text-gray-600 text-center mt-4 uppercase tracking-widest italic">Приложение оптимизировано для iPhone PWA</p>
+    </footer>
 
     <script>
-        // Конфигурация
         const CONFIG = {
-            startDate: new Date(2026, 2, 1), // 1 марта 2026 (0-based month)
-            endDate: new Date(2026, 3, 30),  // 30 апреля 2026
-            totalDays: 61, // С 1 марта по 30 апреля включительно
-            targets: {
-                "Математика": 180,
-                "Информатика": 50,
-                "Русский язык": 80
-            },
-            subjectsOrder: ["Математика", "Информатика", "Русский язык"]
+            preStart: new Date(2026, 1, 28), // 28 февраля 2026
+            startDate: new Date(2026, 2, 1),  // 1 марта 2026
+            endDate: new Date(2026, 3, 30),
+            targets: { "Математика": 180, "Информатика": 50, "Русский язык": 80 },
+            subjectsOrder: ["Математика", "Информатика", "Русский язык"],
+            schedule: {
+                weekday: { start: "18:30", end: "21:30" },
+                weekend: { start: "08:00", end: "19:00" }
+            }
         };
 
-        // Состояние приложения
         let state = {
-            completedDays: JSON.parse(localStorage.getItem('study_plan_v1_completed')) || {},
+            completedDays: JSON.parse(localStorage.getItem('study_plan_v2_completed')) || {},
+            pauses: JSON.parse(localStorage.getItem('study_plan_v2_pauses')) || {}, 
+            sosRedistribution: JSON.parse(localStorage.getItem('study_plan_v2_sos')) || 0,
             currentWeekIndex: 0,
-            simulatedToday: new Date() // Для тестов можно менять. Реально: new Date()
+            today: new Date(), 
+            notified: new Set() 
         };
 
-        // В 2026 году 1 марта - это Воскресенье (0)
-        // Но JS getDay() возвращает 0 для воскресенья, 1 для понедельника.
-        
         function generatePlan() {
             const plan = [];
-            let current = new Date(CONFIG.startDate);
-            let subjectIndex = 0; // Для чередования после 4 марта
+            let current = new Date(CONFIG.preStart);
+            let subjectIndex = 0; 
+            let weekCounter = 0;
 
-            for (let i = 0; i < 61; i++) {
+            while (current <= CONFIG.endDate) {
                 const dateKey = current.toISOString().split('T')[0];
                 const dayOfWeek = current.getDay();
                 const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
                 
-                // Расчет часов
-                const hours = isWeekend ? 11 : 3;
-                const timeRange = isWeekend ? "08:00 – 19:00" : "18:30 – 21:30";
-
-                // Логика предмета
+                let baseHours = 0;
+                let timeRange = { start: "-", end: "-" };
                 let subject = "";
-                if (i < 4) {
-                    subject = "Русский язык"; // С 1 по 4 марта только Русский
+
+                if (current.toDateString() === CONFIG.preStart.toDateString()) {
+                    subject = "Подготовка к старту";
+                    baseHours = 0;
                 } else {
-                    // С 5 марта циклическое чередование
-                    subject = CONFIG.subjectsOrder[subjectIndex % 3];
-                    subjectIndex++;
+                    baseHours = isWeekend ? 11 : 3;
+                    const sched = isWeekend ? CONFIG.schedule.weekend : CONFIG.schedule.weekday;
+                    timeRange = sched;
+
+                    const diffDays = Math.round((current - CONFIG.startDate) / (1000 * 60 * 60 * 24));
+                    if (diffDays < 4) {
+                        subject = "Русский язык";
+                    } else {
+                        subject = CONFIG.subjectsOrder[subjectIndex % 3];
+                        subjectIndex++;
+                    }
                 }
 
+                if (dayOfWeek === 1 && plan.length > 0) weekCounter++;
+
                 plan.push({
-                    id: i,
                     date: new Date(current),
                     dateKey: dateKey,
                     dayName: current.toLocaleDateString('ru-RU', { weekday: 'long' }),
                     dayMonth: current.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
                     subject: subject,
-                    hours: hours,
-                    timeRange: timeRange,
-                    weekNum: Math.floor((i + 1) / 7) // Простая группировка по 7 дней
+                    hours: baseHours,
+                    startTime: timeRange.start,
+                    endTime: timeRange.end,
+                    weekIdx: weekCounter,
+                    isWeekend: isWeekend
                 });
-
                 current.setDate(current.getDate() + 1);
             }
             return plan;
@@ -142,29 +171,23 @@
         const fullPlan = generatePlan();
 
         function calculateStats() {
-            const stats = {
-                "Математика": 0,
-                "Информатика": 0,
-                "Русский язык": 0,
-                "debt": 0
-            };
-
-            const today = new Date();
-            // Сбрасываем время для сравнения только дат
-            today.setHours(0,0,0,0);
+            const stats = { "Математика": 0, "Информатика": 0, "Русский язык": 0, "debt": 0 };
+            const compareToday = new Date(state.today);
+            compareToday.setHours(0,0,0,0);
 
             fullPlan.forEach(day => {
                 const isDone = state.completedDays[day.dateKey];
                 if (isDone) {
-                    stats[day.subject] += day.hours;
+                    if (stats[day.subject] !== undefined) {
+                        stats[day.subject] += day.hours + state.sosRedistribution;
+                    }
                 } else {
-                    // Если день в прошлом и не выполнен -> в долг
-                    if (day.date < today) {
-                        stats.debt += day.hours;
+                    // Долг только с 1 марта (строго >= CONFIG.startDate)
+                    if (compareToday >= CONFIG.startDate && day.date < compareToday && day.hours > 0) {
+                        stats.debt += day.hours + state.sosRedistribution;
                     }
                 }
             });
-
             return stats;
         }
 
@@ -174,14 +197,14 @@
             container.innerHTML = '';
 
             Object.keys(CONFIG.targets).forEach(sub => {
-                const done = stats[sub];
+                const done = Math.floor(stats[sub]);
                 const target = CONFIG.targets[sub];
-                const percent = Math.round((done / target) * 100);
+                const percent = Math.min(100, Math.round((done / target) * 100));
                 
                 container.innerHTML += `
                     <div>
                         <div class="flex justify-between text-xs mb-1">
-                            <span>${sub}</span>
+                            <span>${sub} ${state.sosRedistribution > 0 ? '<span class="text-red-400 text-[10px]">+SOS</span>' : ''}</span>
                             <span class="text-gray-400">${percent}% (${done}/${target} ч)</span>
                         </div>
                         <div class="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
@@ -190,88 +213,193 @@
                     </div>
                 `;
             });
-
-            document.getElementById('debt-counter').textContent = stats.debt;
+            document.getElementById('debt-counter').textContent = Math.floor(stats.debt);
         }
 
-        function renderWeeks() {
-            const nav = document.getElementById('week-selector');
-            const totalWeeks = Math.ceil(fullPlan.length / 7);
-            nav.innerHTML = '';
-
-            for (let i = 0; i < totalWeeks; i++) {
-                const isActive = i === state.currentWeekIndex;
-                const btn = document.createElement('button');
-                btn.className = `week-item flex-shrink-0 py-2 px-3 text-sm font-medium rounded-lg ${isActive ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-400'}`;
-                btn.innerText = `Неделя ${i + 1}`;
-                btn.onclick = () => {
-                    state.currentWeekIndex = i;
-                    renderWeeks();
-                    renderDays();
-                };
-                nav.appendChild(btn);
+        function handleManualPause(dateKey) {
+            const minutes = prompt("Введите количество минут для продления занятия:", "15");
+            if (minutes !== null && !isNaN(minutes) && minutes.trim() !== "") {
+                const currentPause = state.pauses[dateKey] || 0;
+                state.pauses[dateKey] = currentPause + parseInt(minutes); 
+                localStorage.setItem('study_plan_v2_pauses', JSON.stringify(state.pauses));
+                renderDays();
             }
-        }
-
-        function toggleDay(dateKey) {
-            if (state.completedDays[dateKey]) {
-                delete state.completedDays[dateKey];
-            } else {
-                state.completedDays[dateKey] = true;
-            }
-            localStorage.setItem('study_plan_v1_completed', JSON.stringify(state.completedDays));
-            renderStats();
-            renderDays();
         }
 
         function renderDays() {
             const container = document.getElementById('days-container');
             container.innerHTML = '';
+            const weekDays = fullPlan.filter(d => d.weekIdx === state.currentWeekIndex);
+            
+            const nowTimeInMinutes = state.today.getHours() * 60 + state.today.getMinutes();
 
-            const startIdx = state.currentWeekIndex * 7;
-            const weekDays = fullPlan.slice(startIdx, startIdx + 7);
+            let sessionInProgress = false;
 
             weekDays.forEach(day => {
                 const isDone = state.completedDays[day.dateKey];
-                const isToday = new Date().toISOString().split('T')[0] === day.dateKey;
-                const isPast = new Date() > day.date && !isDone;
+                
+                // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Сравнение дат через toDateString
+                const isToday = (state.today.toDateString() === day.date.toDateString());
+                
+                let isNow = false;
+                if (isToday && day.hours > 0 && !isDone) {
+                    const [hStart, mStart] = day.startTime.split(':').map(Number);
+                    const [hEnd, mEnd] = day.endTime.split(':').map(Number);
+                    const startTotal = hStart * 60 + mStart;
+                    const endTotal = hEnd * 60 + mEnd + (state.pauses[day.dateKey] || 0);
+                    
+                    isNow = nowTimeInMinutes >= startTotal && nowTimeInMinutes <= endTotal;
+                }
+                
+                if (isNow) sessionInProgress = true;
 
                 const card = document.createElement('div');
-                card.className = `card p-4 mb-4 transition-all ${isDone ? 'opacity-50 grayscale' : ''} ${isToday ? 'ring-2 ring-blue-500' : ''}`;
+                card.className = `card p-4 mb-4 transition-all ${isDone ? 'opacity-40 grayscale-[0.5]' : ''} ${isToday ? 'ring-2 ring-blue-500 shadow-[0_0_15px_rgba(10,132,255,0.2)]' : ''} ${isNow ? 'active-session-card' : ''}`;
                 
+                const pauseTime = state.pauses[day.dateKey] || 0;
+                let timeDisplay = `${day.startTime} – ${day.endTime}`;
+                if (day.hours === 0) {
+                    timeDisplay = "Выходной / Подготовка";
+                } else if (pauseTime > 0) {
+                    const [hEnd, mEnd] = day.endTime.split(':').map(Number);
+                    const adjDate = new Date(2000, 0, 1, hEnd, mEnd + pauseTime);
+                    const adjEnd = adjDate.toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'});
+                    timeDisplay = `${day.startTime} – <span class="text-orange-400">${adjEnd}</span>`;
+                }
+
                 card.innerHTML = `
-                    <div class="flex justify-between items-start mb-2">
+                    <div class="flex justify-between items-start mb-3">
                         <div>
-                            <span class="text-xs uppercase font-bold ${isDone ? 'text-green-500' : 'text-blue-400'}">${day.subject}</span>
-                            <h3 class="text-lg font-bold">${day.dayMonth}, ${day.dayName}</h3>
+                            <span class="text-[10px] uppercase tracking-wider font-black ${isDone ? 'text-green-500' : 'text-blue-400'}">
+                                ${day.subject} ${isNow ? '• В ЭФИРЕ' : ''}
+                            </span>
+                            <h3 class="text-lg font-bold capitalize">${day.dayMonth}, ${day.dayName}</h3>
                         </div>
                         <div class="text-right">
-                            <span class="block text-sm font-mono">${day.timeRange}</span>
-                            <span class="text-xs text-gray-400">${day.hours} ч.</span>
+                            <span class="block text-sm font-mono font-medium">${timeDisplay}</span>
+                            <span class="text-[10px] text-gray-500 uppercase tracking-tighter">${day.hours > 0 ? (day.hours + (state.sosRedistribution > 0 ? 1 : 0)) + ' ч.' : '0 ч.'}</span>
                         </div>
                     </div>
-                    <button 
-                        onclick="toggleDay('${day.dateKey}')"
-                        class="w-full py-3 rounded-xl font-bold text-sm transition-colors ${isDone ? 'bg-green-600' : 'bg-white/10 active:bg-white/20'}"
-                    >
-                        ${isDone ? '✓ ВЫПОЛНЕНО' : 'ОТМЕТИТЬ ВЫПОЛНЕННЫМ'}
-                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="toggleDay('${day.dateKey}')" class="flex-1 py-3 rounded-xl font-bold text-sm transition-all ${isDone ? 'bg-green-600/20 text-green-500 border border-green-600/30' : 'bg-white/10 active:scale-95 text-white'}">
+                            ${isDone ? 'ВЫПОЛНЕНО ✓' : (day.hours === 0 ? 'ПРОЧИТАНО' : 'ГОТОВО')}
+                        </button>
+                        ${isToday && !isDone && day.hours > 0 ? `
+                            <button onclick="handleManualPause('${day.dateKey}')" class="px-4 bg-orange-500/10 text-orange-500 border border-orange-500/20 rounded-xl font-bold text-xs active:scale-95">
+                                ПАУЗА ${pauseTime > 0 ? `+${pauseTime}м` : ''}
+                            </button>
+                        ` : ''}
+                    </div>
                 `;
                 container.appendChild(card);
             });
+
+            const headerStatus = document.getElementById('active-status-header');
+            if (sessionInProgress) headerStatus.classList.remove('hidden');
+            else headerStatus.classList.add('hidden');
         }
 
-        // Авто-определение текущей недели
+        async function requestNotifications() {
+            if ("Notification" in window) {
+                const permission = await Notification.requestPermission();
+                if (permission === "granted") console.log("Уведомления разрешены");
+            }
+        }
+
+        function checkNotifications() {
+            const todayStr = state.today.toISOString().split('T')[0];
+            const day = fullPlan.find(d => d.dateKey === todayStr);
+            if (!day || day.hours === 0 || state.completedDays[day.dateKey]) return;
+
+            const [hStart, mStart] = day.startTime.split(':').map(Number);
+            const nowTime = state.today.getHours() * 60 + state.today.getMinutes();
+            const startTotal = hStart * 60 + mStart;
+
+            if (nowTime === startTotal - 10 && !state.notified.has(todayStr + '_pre')) {
+                sendNotify(`Через 10 минут начало! Предмет: ${day.subject}. Удачи!`);
+                state.notified.add(todayStr + '_pre');
+            }
+
+            if (nowTime === startTotal + 15 && !state.notified.has(todayStr + '_late')) {
+                sendNotify(`Ты опаздываешь! Занятие уже идет. Используй ручную паузу, если нужно.`);
+                state.notified.add(todayStr + '_late');
+            }
+        }
+
+        function sendNotify(text) {
+            if (Notification.permission === "granted") {
+                new Notification("План 2026", { body: text });
+            }
+        }
+
+        document.getElementById('sos-btn').onclick = () => {
+            const stats = calculateStats();
+            if (stats.debt <= 0) return;
+
+            const today = new Date(state.today);
+            today.setHours(0,0,0,0);
+            const remainingDays = fullPlan.filter(d => d.date >= today && !state.completedDays[d.dateKey] && d.hours > 0).length;
+
+            if (remainingDays > 0) {
+                const additionalPerDay = stats.debt / remainingDays;
+                state.sosRedistribution += additionalPerDay;
+                localStorage.setItem('study_plan_v2_sos', JSON.stringify(state.sosRedistribution));
+                renderStats();
+                renderDays();
+            }
+        };
+
+        function renderWeeks() {
+            const nav = document.getElementById('week-selector');
+            const weeksCount = fullPlan[fullPlan.length - 1].weekIdx + 1;
+            nav.innerHTML = '';
+            for (let i = 0; i < weeksCount; i++) {
+                const isActive = i === state.currentWeekIndex;
+                const btn = document.createElement('button');
+                btn.className = `week-item flex-shrink-0 py-2 px-4 text-sm font-medium rounded-full transition-all ${isActive ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-gray-400'}`;
+                btn.innerText = `Нед ${i + 1}`;
+                btn.onclick = () => { state.currentWeekIndex = i; renderWeeks(); renderDays(); };
+                nav.appendChild(btn);
+            }
+        }
+
+        function toggleDay(dateKey) {
+            if (state.completedDays[dateKey]) delete state.completedDays[dateKey];
+            else state.completedDays[dateKey] = true;
+            localStorage.setItem('study_plan_v2_completed', JSON.stringify(state.completedDays));
+            renderStats();
+            renderDays();
+        }
+
         function init() {
-            const today = new Date().toISOString().split('T')[0];
-            const foundIdx = fullPlan.findIndex(d => d.dateKey === today);
-            if (foundIdx !== -1) {
-                state.currentWeekIndex = Math.floor(foundIdx / 7);
+            const foundDay = fullPlan.find(d => state.today.toDateString() === d.date.toDateString());
+            
+            if (foundDay) {
+                state.currentWeekIndex = foundDay.weekIdx;
+            } else {
+                state.currentWeekIndex = 0; 
             }
             
             renderStats();
             renderWeeks();
             renderDays();
+            
+            const monthName = state.today.toLocaleString('ru-RU', { month: 'long' });
+            if (state.today >= CONFIG.preStart && state.today <= CONFIG.endDate) {
+                document.getElementById('current-date-display').innerText = `Сегодня: ${state.today.getDate()} ${monthName} 2026`;
+            } else {
+                const diff = Math.ceil((CONFIG.startDate - state.today) / (1000 * 60 * 60 * 24));
+                document.getElementById('current-date-display').innerText = diff > 0 ? `До старта курса: ${diff} дн.` : `Курс завершен`;
+            }
+
+            window.addEventListener('click', requestNotifications, { once: true });
+
+            setInterval(() => {
+                state.today = new Date();
+                checkNotifications();
+                renderDays();
+                renderStats();
+            }, 30000);
         }
 
         init();
